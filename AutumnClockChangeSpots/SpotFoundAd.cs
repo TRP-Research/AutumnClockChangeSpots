@@ -9,17 +9,13 @@ namespace AutumnClockChangeSpots
         {
             SpotDuration = AdLength;
 
-            ExpectedNumOfFrames = 8 * SpotDuration;
-            //sort?
-
-
-
+            ExpectedNumOfFrames = 8 * SpotDuration;   
         }
 
-        //public int Carrier { get; set; }
+        public int Carrier { get; set; }
 
-        //public int Region { get; set; }
-        //public int Platform { get; set; }
+        public int Region { get; set; }
+        public int Platform { get; set; }
 
         public string Title { get; set; }
         public string Advertiser { get; set; }
