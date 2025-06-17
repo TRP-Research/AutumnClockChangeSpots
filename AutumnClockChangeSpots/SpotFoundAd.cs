@@ -16,10 +16,10 @@ namespace AutumnClockChangeSpots
 
         }
 
-        public int Carrier { get; set; } = 0;
+        //public int Carrier { get; set; }
 
-        public int Region { get; set; } = 0;
-        public int Platform { get; set; } = 0;
+        //public int Region { get; set; }
+        //public int Platform { get; set; }
 
         public string Title { get; set; }
         public string Advertiser { get; set; }

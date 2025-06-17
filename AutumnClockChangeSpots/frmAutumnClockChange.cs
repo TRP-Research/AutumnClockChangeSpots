@@ -693,12 +693,13 @@ group by a.idx,a.filmcode,m.advertisername,a.advertiser,m.brand,a.brand,m.commer
                 timeslot.carrier = carrier;
                 timeslot.region = region;
                 timeslot.platform = platform;
-                timeslot.masterspot = spot.FilmCodeIdx;
+                timeslot.SlotIdx = spot.FilmCodeIdx;
 
 
                 timeslot.SlotStart = spot.CalculatedStart;
+                timeslot.SlotEnd = spot.CalculatedEnd;
 
-                timeslot.Duration = spot.SpotDuration;
+                timeslot.SlotDuration = spot.SpotDuration;
 
                 TimeSlotLst.Add(timeslot);
             }

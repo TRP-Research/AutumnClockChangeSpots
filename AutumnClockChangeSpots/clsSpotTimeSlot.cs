@@ -19,10 +19,23 @@ namespace AutumnClockChangeSpots
 
             }
         }
-        public int Duration { get; set; } = 0;
+        private TimeSpan _SlotEnd;
+        public TimeSpan SlotEnd
+        {
+            get => _SlotEnd;
+            set
+            {
+                _SlotEnd = value;
+                if (SlotStart != null && SlotStart < value)
+                    MatchDuration = (int)(value - SlotStart).TotalSeconds;
+            }
+        }
+        public int SlotDuration { get; set; } = 0;
 
-        public int masterspot { get; set; } = 0;
+        public int SlotIdx { get; set; } = 0;
 
-        public bool delete { get; set; } = false;
+        public bool Deleted { get; set; } = false;
+        public int MatchDuration { get; set; }
+
     }
 }
