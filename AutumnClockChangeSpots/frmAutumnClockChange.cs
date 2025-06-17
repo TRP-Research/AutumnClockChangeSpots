@@ -6,6 +6,7 @@ using Amazon.SecretsManager;
 using Amazon.SecretsManager.Model;
 using DevExpress.Data.Helpers;
 using DevExpress.XtraPrinting;
+using DevExpress.XtraPrinting.Native;
 using DevExpress.XtraPrinting.Native.WebClientUIControl;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -93,6 +94,12 @@ namespace AutumnClockChangeSpots
         private DateTime AutumnChangeDate;
 
         /// <summary>
+        /// root path to the Dir for all the json data files
+        /// </summary>
+        private static string AutumnTopLevelDir = @"X:\Clients\Collaborative Promo Logging\Spot Logs\FullResultReports\AutumnClockChange\";
+
+
+        /// <summary>
         /// list of channel information, now read from json file
         /// </summary>
         private BindingList<clsChannelData> AllCarriers = new BindingList<clsChannelData>();
@@ -124,9 +131,9 @@ namespace AutumnClockChangeSpots
             dtpYear.Value = DateTime.Now;
 
             //Annual End: The Last Sunday of October at 2:00 AM
-
             UpdateAutumnChangeInfo(dtpYear.Value.Year);
 
+            //TODO remove this date is only for testing
             AutumnChangeDate = new DateTime(dtpYear.Value.Year, 6, 14); 
 
             try
@@ -135,7 +142,7 @@ namespace AutumnClockChangeSpots
 
 
 
-                //thos is a hard coded list willl need to read DB at some point
+                //uses config file from AWS Bucket
                 LoadChannelData();
 
                 LoadAllSpotsAndHashData();
@@ -243,6 +250,7 @@ group by a.idx,a.filmcode,m.advertisername,a.advertiser,m.brand,a.brand,m.commer
 
             DateTime AutumnReportDate = AutumnChangeDate.AddDays(-1); //report date is the day before the change
 
+            //TODO Testing remove
             if (true)//(DateTime.Now > AutumnReportDate)
             {
                 REportDateInfoLabel.Text = String.Format("For the year {0} autumn clock change is on the {1}", dtpYear.Value.Year, AutumnChangeDate.ToShortDateString());
@@ -257,6 +265,12 @@ group by a.idx,a.filmcode,m.advertisername,a.advertiser,m.brand,a.brand,m.commer
             }
         }
 
+        /// <summary>
+        /// gets the last day in in the month
+        /// </summary>
+        /// <param name="date"></param>
+        /// <param name="day"></param>
+        /// <returns></returns>
         private static DateTime GetLastWeekdayOfMonth(DateTime date, DayOfWeek day)
         {
             DateTime lastDayOfMonth = new DateTime(date.Year, date.Month, 1)
@@ -350,11 +364,10 @@ group by a.idx,a.filmcode,m.advertisername,a.advertiser,m.brand,a.brand,m.commer
             ReadExtraHourChannelData(CarrierData.Carrier.ToString(), CarrierData.Region.ToString(), CarrierData.Platform.ToString(), AutumnChangeDate.AddDays(-1).ToString("yyyy-MM-dd"));
 
             FindAllAds(CarrierData.Carrier.ToString(), CarrierData.Region.ToString(), CarrierData.Platform.ToString(), AutumnChangeDate.AddDays(-1).ToString("yyyy-MM-dd"));
-
-            // analyse spots to setup time slot information with selected fimecode
-            // ReadFoundAdData(Carrier, Region, DateStr);
+                      
 
             progressBar1.Value = 1;
+            ReportAllChannelsWithTimeSlots();
         }
 
         private static void ReadExtraHourChannelData(string carrier, string region, string platform, string dateStr)
@@ -381,11 +394,9 @@ group by a.idx,a.filmcode,m.advertisername,a.advertiser,m.brand,a.brand,m.commer
                 {
                     connection.Open();
 
-                    //string DayQuery = "select recorddate,frametime,  longhash from tbl_carrier_hash_timestamps where recorddate = '" + theDate.ToString("yyyy-MM-dd") + "' and carrier = " + carrier + " and Region = " + region;
-                    string NextDayQuery = "select recorddate,frametime,  longhash from tbl_carrier_hash_timestamps where recorddate = '" + theDate.AddDays(1).ToString("yyyy-MM-dd") + "' and carrier = " + carrier + " and Region = " + region + " and source = " + platform;
+                     string NextDayQuery = "select recorddate,frametime,  longhash from tbl_carrier_hash_timestamps where recorddate = '" + theDate.AddDays(1).ToString("yyyy-MM-dd") + "' and carrier = " + carrier + " and Region = " + region + " and source = " + platform;
 
-
-                    //load next dash hash data to select the 1-2 hour to use as 25th hr
+                    //load next dash hash data to select the 1-2 hour to use as 27th hr
                     using (var cmd = new NpgsqlCommand(NextDayQuery, connection))
                     {
                         using (NpgsqlDataReader NextDayReader = cmd.ExecuteReader())
@@ -397,6 +408,7 @@ group by a.idx,a.filmcode,m.advertisername,a.advertiser,m.brand,a.brand,m.commer
                                 TimeSpan TimeStr = NextDayReader.GetTimeSpan(1);
                                 DateTime RecordDate = NextDayReader.GetDateTime(0);
 
+                                //TODO consider getting n seconds before 1 to allow for overlaps, tweak 1 am time to TimeSpan(0, 57, 0);/ allow 3 mins?
                                 if (TimeStr >= OneAM && TimeStr <= TwoAM)
                                 {
                                     string LongHash = Convert.ToString(lHash, 2).PadLeft(64, '0');
@@ -428,8 +440,7 @@ group by a.idx,a.filmcode,m.advertisername,a.advertiser,m.brand,a.brand,m.commer
 
         private static void FindAllAds(string carrier, string region, string platform, string dateStr)
         {
-            string AutumnTopLevelDir = @"X:\Clients\Collaborative Promo Logging\Spot Logs\FullResultReports\AutumnClockChange\";
-
+            
             ConcurrentBag<SpotSearchFoundAd> AllSpotDaysMatches = new ConcurrentBag<SpotSearchFoundAd>();
 
             ConcurrentBag<OffsetSpotAndMatchFrameNum> AllSpotsAndFrames = new ConcurrentBag<OffsetSpotAndMatchFrameNum>();
@@ -536,6 +547,9 @@ group by a.idx,a.filmcode,m.advertisername,a.advertiser,m.brand,a.brand,m.commer
 
                 var json = JsonConvert.SerializeObject(OPList);
                 File.WriteAllText(Path.Combine(opDir, filename), json);
+
+                //now opspots 
+                OPTimeSlotJson(carrier, region, platform, dateStr, OPList, opDir);
             }
         }
         private void LoadAllSpotsHash(string dateStr)
@@ -603,6 +617,95 @@ group by a.idx,a.filmcode,m.advertisername,a.advertiser,m.brand,a.brand,m.commer
             finally
             {
 
+            }
+        }
+
+        private static void OPTimeSlotJson(string carrier, string region, string platform, string dateStr, List<SpotFoundAd> OPList, string opDir)
+        {
+            List<ReadSpotFoundAd> allfoundads = new List<ReadSpotFoundAd>();
+            foreach (SpotFoundAd foundAd in OPList)
+            {
+                ReadSpotFoundAd MyAd = new ReadSpotFoundAd(foundAd.SpotDuration);
+                //MyAd.Title = Spot.Title;
+                //MyAd.Advertiser = Spot.Advertiser;
+                //MyAd.Brand = Spot.Brand;
+                MyAd.FilmCodeIdx = foundAd.FilmCodeIdx;
+                MyAd.FilmCode = foundAd.FilmCode;
+                MyAd.SpotMatchedStart = foundAd.SpotMatchedStart;
+                MyAd.SpotMatchedEnd = foundAd.SpotMatchedEnd;
+                MyAd.CalculatedStart = foundAd.CalculatedStart;
+                MyAd.CalculatedEnd = foundAd.CalculatedEnd;
+                MyAd.SequenceQuality = foundAd.SequenceQuality;
+                MyAd.BaseSequenceQuality = foundAd.BaseSequenceQuality;
+                MyAd.StartSpotFrameIdx = foundAd.StartSpotFrameIdx;
+                MyAd.EndSpotFrameIdx = foundAd.EndSpotFrameIdx;
+
+                //tweak data for display on 2-2 clock
+                //if (MyAd.SpotMatchedStart < TwoAM)
+                //    MyAd.SpotMatchedStart = MyAd.SpotMatchedStart.Add(OneDay);
+
+                //if (MyAd.SpotMatchedEnd < TwoAM)
+                //    MyAd.SpotMatchedEnd = MyAd.SpotMatchedEnd.Add(OneDay);
+
+                //if (MyAd.CalculatedStart < TwoAM)
+                //    MyAd.CalculatedStart = MyAd.CalculatedStart.Add(OneDay);
+
+                //if (MyAd.CalculatedEnd < TwoAM)
+                //    MyAd.CalculatedEnd = MyAd.CalculatedEnd.Add(OneDay);
+
+                allfoundads.Add(MyAd);
+            }
+
+            //run through overlapping                    
+            var filteredads = from ad in allfoundads where ad.SequenceQuality > CONST_QualityFilterPercent && ad.LenPercentTest >= CONST_LengthFilterPercent select ad;
+
+            // this overlength test may be fragile or better frame selection will correct it
+            //remove all overlong matches andd sort by Ad.duration reduce to 1.3 from 1.5
+            List<ReadSpotFoundAd> LengthFiteredOrderedDayLst = filteredads.Where(o => o.LengthTest < 1.3 * o.SpotDuration && o.BaseSequenceQuality >= 5.0).OrderByDescending(o => o.SpotDuration).ToList();
+
+            List<TimeAndGap> AdGaps = new List<TimeAndGap>();
+
+            //TODO make a new global list to be edited
+
+            FindAllOverlappingSpotsOAndMAds(LengthFiteredOrderedDayLst, out LengthFiteredOrderedDayLst);
+
+            //list of directly selected ads
+            List<ReadSpotFoundAd> FiteredOrderedDayLst = LengthFiteredOrderedDayLst.Where(o => o.Overlapped == false).ToList();
+
+            List<ReadSpotFoundAd> finallst = (from spot in LengthFiteredOrderedDayLst where spot.Overlapped == false select spot).ToList();
+
+            foreach (ReadSpotFoundAd spot in finallst)
+            {
+                var overlaped = from overlap in LengthFiteredOrderedDayLst where overlap.Overlapped == true && Math.Abs(spot.CalculatedStart.TotalSeconds - overlap.CalculatedStart.TotalSeconds) < 3 select overlap;
+                if (overlaped.Count() > 0)
+                    spot.OverlappedSpots = overlaped.ToList();
+            }
+
+            List<clsSpotTimeSlot> TimeSlotLst = new List<clsSpotTimeSlot>();
+
+
+            foreach (ReadSpotFoundAd spot in finallst)
+            {
+                clsSpotTimeSlot timeslot = new clsSpotTimeSlot();
+                timeslot.carrier = carrier;
+                timeslot.region = region;
+                timeslot.platform = platform;
+                timeslot.masterspot = spot.FilmCodeIdx;
+
+
+                timeslot.SlotStart = spot.CalculatedStart;
+
+                timeslot.Duration = spot.SpotDuration;
+
+                TimeSlotLst.Add(timeslot);
+            }
+
+            //(broadcastdate, carrier, region, slotstart, duration, masterspot
+            string filename = String.Format("TimeSlots_{0}_{1}_{2}_{3}.json", carrier, region, platform, dateStr);
+            if (TimeSlotLst.Count() > 0)
+            {
+                var json = JsonConvert.SerializeObject(TimeSlotLst);
+                File.WriteAllText(Path.Combine(opDir, filename), json);
             }
         }
 
@@ -789,191 +892,13 @@ group by a.idx,a.filmcode,m.advertisername,a.advertiser,m.brand,a.brand,m.commer
                 ReadExtraHourChannelData(carrier.Carrier.ToString(), carrier.Region.ToString(), carrier.Platform.ToString(), AutumnChangeDate.AddDays(-1).ToString("yyyy-MM-dd"));
 
                 FindAllAds(carrier.Carrier.ToString(), carrier.Region.ToString(), carrier.Platform.ToString(), AutumnChangeDate.AddDays(-1).ToString("yyyy-MM-dd"));
-
-                //TODO progrreess bar and status update
-                //also add 
-                // analyse spots to setup time slot information with selected fimecode
-                // ReadFoundAdDataFrom json(Carrier, Region, DateStr);
-
+                            
                 progressBar1.Value = progressBar1.Value + 1;
             }
+            ReportAllChannelsWithTimeSlots();
         }
 
-        private static void ReadFoundAdDataFromJson(string carrier, string region, string dateStr)
-        {
-            try
-            {
-                string expectedFormat = "yyyy-MM-dd";
-                DateTime theDate;
-                bool result = DateTime.TryParseExact(
-                    dateStr,
-                    expectedFormat,
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    System.Globalization.DateTimeStyles.None,
-                    out theDate);
-
-                //test times to filter out the 2am - 2am times
-                //this is too slow to run on the DB so fetch full days and filter on import                
-                TimeSpan TwoAM = new TimeSpan(2, 0, 0);
-                TimeSpan OneDay = new TimeSpan(24, 0, 0);
-
-                //clsCarrierData CarrierData = (clsCarrierData)lueChannel.GetSelectedDataRow();
-
-                List<ReadSpotFoundAd> allfoundads = new List<ReadSpotFoundAd>();
-                using (NpgsqlConnection connection = ReturnBBConnection())
-                {
-                    connection.Open();
-
-                    //Day is stored in 24 hr clock BUT 0 -2am is actually 24-26 hr data
-                    string DayQuery = "select * from tbl_foundad where broadcastdate = '" + theDate.ToString("yyyy-MM-dd") + "' and carrier = " + carrier + " and Region = " + region;
-
-                    //Load day records read from json
-                    using (var cmd = new NpgsqlCommand(DayQuery, connection))
-                    {
-                        using (NpgsqlDataReader DayReader = cmd.ExecuteReader())
-                        {
-                            // Output rows
-                            while (DayReader.Read())
-                            {
-                                int Parentidx = DayReader.GetInt32(1);
-
-                                clsSpotMetaData Spot;
-                                //var Spot = (from spot in AllSpotsData where spot.ParentIDX == Parentidx select spot).First();
-                                if (AllSpotsData.TryGetValue(Parentidx, out Spot))
-                                {
-                                    ReadSpotFoundAd MyAd = new ReadSpotFoundAd(Spot.Duration);
-
-                                    MyAd.Title = Spot.Title;
-                                    MyAd.Advertiser = Spot.Advertiser;
-                                    MyAd.Brand = Spot.Brand;
-                                    MyAd.FilmCodeIdx = Parentidx;
-                                    MyAd.FilmCode = Spot.FilmCode;
-                                    MyAd.SpotMatchedStart = DayReader.GetTimeSpan(2);
-                                    MyAd.SpotMatchedEnd = DayReader.GetTimeSpan(3);
-                                    MyAd.CalculatedStart = DayReader.GetTimeSpan(4);
-                                    MyAd.CalculatedEnd = DayReader.GetTimeSpan(5);
-                                    MyAd.SequenceQuality = DayReader.GetDouble(6);
-                                    MyAd.BaseSequenceQuality = DayReader.GetDouble(7);
-                                    MyAd.StartSpotFrameIdx = DayReader.GetInt32(11);
-                                    MyAd.EndSpotFrameIdx = DayReader.GetInt32(12);
-
-                                    //tweak data for display on 2-2 clock
-                                    if (MyAd.SpotMatchedStart < TwoAM)
-                                        MyAd.SpotMatchedStart = MyAd.SpotMatchedStart.Add(OneDay);
-
-                                    if (MyAd.SpotMatchedEnd < TwoAM)
-                                        MyAd.SpotMatchedEnd = MyAd.SpotMatchedEnd.Add(OneDay);
-
-                                    if (MyAd.CalculatedStart < TwoAM)
-                                        MyAd.CalculatedStart = MyAd.CalculatedStart.Add(OneDay);
-
-                                    if (MyAd.CalculatedEnd < TwoAM)
-                                        MyAd.CalculatedEnd = MyAd.CalculatedEnd.Add(OneDay);
-
-                                    allfoundads.Add(MyAd);
-                                }
-                            }
-                        }
-                    }
-
-
-                    //run through overlapping                    
-                    var filteredads = from ad in allfoundads where ad.SequenceQuality > CONST_QualityFilterPercent && ad.LenPercentTest >= CONST_LengthFilterPercent select ad;
-
-                    // this overlength test may be fragile or better frame selection will correct it
-                    //remove all overlong matches andd sort by Ad.duration reduce to 1.3 from 1.5
-                    List<ReadSpotFoundAd> LengthFiteredOrderedDayLst = filteredads.Where(o => o.LengthTest < 1.3 * o.SpotDuration && o.BaseSequenceQuality >= 5.0).OrderByDescending(o => o.SpotDuration).ToList();
-
-                    List<TimeAndGap> AdGaps = new List<TimeAndGap>();
-
-                    //TODO make a new global list to be edited
-
-                    FindAllOverlappingSpotsOAndMAds(LengthFiteredOrderedDayLst, out LengthFiteredOrderedDayLst);
-
-                    //list of directly selected ads
-                    List<ReadSpotFoundAd> FiteredOrderedDayLst = LengthFiteredOrderedDayLst.Where(o => o.Overlapped == false).ToList();
-
-                    List<ReadSpotFoundAd> finallst = (from spot in LengthFiteredOrderedDayLst where spot.Overlapped == false select spot).ToList();
-
-                    foreach (ReadSpotFoundAd spot in finallst)
-                    {
-                        var overlaped = from overlap in LengthFiteredOrderedDayLst where overlap.Overlapped == true && Math.Abs(spot.CalculatedStart.TotalSeconds - overlap.CalculatedStart.TotalSeconds) < 3 select overlap;
-                        if (overlaped.Count() > 0)
-                            spot.OverlappedSpots = overlaped.ToList();
-                    }
-
-                    List<clsSpotTimeSlot> TimeSlotLst = new List<clsSpotTimeSlot>();
-
-
-                    foreach (ReadSpotFoundAd spot in finallst)
-                    {
-                        clsSpotTimeSlot timeslot = new clsSpotTimeSlot();
-                        timeslot.SelectedSpot = spot;
-                        timeslot.OverlappedSpots = spot.OverlappedSpots;
-                        timeslot.SlotStart = spot.CalculatedStart;
-                        timeslot.SlotEnd = spot.CalculatedEnd;
-                        timeslot.SlotDuration = spot.SpotDuration;
-                        timeslot.Gap = spot.Gap;
-
-                        TimeSlotLst.Add(timeslot);
-                    }
-
-                    //TODO write to json file
-                    int mike = 1;
-                    /*
-                    using (var cmd = new NpgsqlCommand(DayQuery, connection))
-                    { 
-                        //connection.Open();
-                        DateTime OPDate = theDate;
-                        StringBuilder ipstring = new StringBuilder();
-                        //remove any previous
-                        ipstring.AppendLine("delete from tbl_spot_timeslots where broadcastdate = '" + OPDate.ToString("yyyy-MM-dd") + "' and carrier = " + carrier + " and region = " + region + "; ");
-                        //build multi valued imput string as single input is slow
-                        ipstring.AppendLine("INSERT INTO tbl_spot_timeslots(broadcastdate, carrier,region,slotstart,duration, masterspot) VALUES");
-
-                        bool first = true;
-
-                        //populate values
-                        foreach (clsSpotTimeSlot timeslot in TimeSlotLst)
-                        {
-                            TimeSpan Start = timeslot.SlotStart;
-
-                            //manging commas in string
-                            if (first)
-                            {
-                                string opline = string.Format("('{0}',{1},{2},'{3}',{4},{5})", OPDate.ToString("yyyy-MM-dd"), carrier, region, Start.ToString(@"hh\:mm\:ss"), timeslot.SlotDuration, timeslot.SelectedSpot.FilmCodeIdx);
-                                ipstring.AppendLine(opline);
-                                first = false;
-                            }
-                            else
-                            {
-                                string opline = string.Format(",('{0}',{1},{2},'{3}',{4},{5})", OPDate.ToString("yyyy-MM-dd"), carrier, region, Start.ToString(@"hh\:mm\:ss"), timeslot.SlotDuration, timeslot.SelectedSpot.FilmCodeIdx);
-                                ipstring.AppendLine(opline);
-                            }
-
-                        }
-                        string framestr = ipstring.ToString();
-                        //close query
-                        framestr = framestr + ";";
-
-                        //execute insert
-                        using (var SaveCmd = new NpgsqlCommand(framestr, connection))
-                        {
-                            SaveCmd.CommandTimeout = 180;
-
-                            SaveCmd.Prepare();
-
-                            SaveCmd.ExecuteNonQuery();
-                        }
-                    }
-                    */
-                }
-            }
-            catch (Exception ex)
-            {
-
-            }
-        }
+        
         /// <summary>
         /// take list of all day matches for all ads and mark all overlaps and return sorted lsit
         /// </summary>
@@ -1084,6 +1009,31 @@ group by a.idx,a.filmcode,m.advertisername,a.advertiser,m.brand,a.brand,m.commer
             }
         }
 
+        private void button1_Click(object sender, EventArgs e)
+        {
+            //get all TimeSlots_1107_0_0_2025-06-13 filea and report channels affaaected
+
+            ReportAllChannelsWithTimeSlots();
+        }
+
+        private void ReportAllChannelsWithTimeSlots()
+        {
+            String AllTimeSlotChannels = "Channels With Timeslots" + Environment.NewLine;
+            string[] allpaths = Directory.GetFiles(AutumnTopLevelDir + @"FoundAds\", "TimeSlots*.json", SearchOption.TopDirectoryOnly);
+
+            foreach (string item in allpaths)
+            {
+                string filename = Path.GetFileName(item);
+                string[] splitstr = filename.Split('_');
+                var channnel = from cnl in AllCarriers where cnl.Carrier.ToString() == splitstr[1] && cnl.Region.ToString() == splitstr[2] && cnl.Platform.ToString() == splitstr[3] select cnl;
+
+                if (channnel != null)
+                {
+                    AllTimeSlotChannels = AllTimeSlotChannels + channnel.First().UIName + Environment.NewLine;
+                }
+            }
+            File.WriteAllText(Path.Combine(AutumnTopLevelDir + @"FoundAds\", "ChannelsWithTimeSlotsForHr27.txt"), AllTimeSlotChannels);
+        }
     }
 
     /// <summary>
