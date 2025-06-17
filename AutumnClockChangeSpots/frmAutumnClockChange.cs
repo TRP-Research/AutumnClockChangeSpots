@@ -521,7 +521,10 @@ group by a.idx,a.filmcode,m.advertisername,a.advertiser,m.brand,a.brand,m.commer
                 List<SpotFoundAd> OPList = new List<SpotFoundAd>();
                 foreach (SpotSearchFoundAd item in SpotsAdsFromBag)
                 {
-                    SpotFoundAd MyAd = new SpotFoundAd(item.SpotDuration);                   
+                    SpotFoundAd MyAd = new SpotFoundAd(item.SpotDuration);
+                    MyAd.Carrier = int.Parse(carrier);
+                    MyAd.Region = int.Parse(region);
+                    MyAd.Platform = int.Parse(platform);
                     MyAd.Title = "";
                     MyAd.Advertiser = "";
                     MyAd.Brand = "";
